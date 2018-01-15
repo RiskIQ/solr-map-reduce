@@ -1,0 +1,19 @@
+dependencies {
+    compile group: "org.apache.solr", name: "solr-solrj", version: SOLR_VERSION
+    compile group: "org.apache.solr", name: "solr-core", version: SOLR_VERSION
+    compile group: 'org.kitesdk', name: 'kite-morphlines-core', version: MORPHLINES_VERSION
+    compile group: 'org.kitesdk', name: 'kite-morphlines-avro', version: MORPHLINES_VERSION
+    compile group: "io.dropwizard.metrics", name: "metrics-core", version: DROPWIZARD_VERSION
+    compile group: "io.dropwizard.metrics", name: "metrics-healthchecks", version: DROPWIZARD_VERSION
+    compile group: "com.typesafe", name: "config", version: "1.0.2"
+    /*compile group: 'org.restlet.jee', name: 'org.restlet', version: '2.3.0'
+    compile group: 'org.restlet.jee', name: 'org.restlet.ext.servlet', version: '2.3.0'*/
+
+
+
+    testCompile group: "org.apache.solr", name: "solr-test-framework", version: SOLR_VERSION
+    testCompile group: 'org.kitesdk', name: 'kite-morphlines-core', version: MORPHLINES_VERSION, classifier: "tests"
+    testCompile group: 'com.carrotsearch.randomizedtesting', name: 'randomizedtesting-runner', version: '2.5.0'
+    testCompile group: 'org.slf4j', name: 'slf4j-log4j12', version: '1.7.25'
+    testCompile group: 'junit', name: 'junit', version: '4.12'
+}

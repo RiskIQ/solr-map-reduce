@@ -1,0 +1,58 @@
+
+subprojects {
+    group 'org.apache.solr.hadoop'
+    version PROJECT_VERSION
+
+    apply plugin: 'java'
+    apply plugin: 'idea'
+    apply plugin: 'maven'
+
+    repositories {
+        mavenCentral()
+        maven {
+            url "http://maven.restlet.com"
+        }
+    }
+
+    idea {
+        module {
+            downloadJavadoc = true
+            downloadSources = true
+        }
+    }
+
+    compileJava {
+        sourceCompatibility = JAVA_VERSION
+        targetCompatibility = JAVA_VERSION
+    }
+
+    task sourcesJar(type: Jar, dependsOn: classes) {
+        dependsOn classes
+        classifier "sources"
+        from sourceSets.main.allSource
+        group "build"
+    }
+
+    task javadocJar(type: Jar, dependsOn: javadoc) {
+        classifier = "javadoc"
+        from javadoc.destinationDir
+        group "build"
+    }
+
+    task testJar(type: Jar) {
+        classifier = "tests"
+        from sourceSets.test.output
+    }
+
+    task testSourceJar(type: Jar) {
+        classifier = "tests-sources"
+        from sourceSets.test.allJava
+    }
+
+    artifacts {
+        archives sourcesJar
+        //archives javadocJar
+        archives testJar
+        archives testSourceJar
+    }
+}
