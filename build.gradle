@@ -1,11 +1,24 @@
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath "io.codearte.gradle.nexus:gradle-nexus-staging-plugin:0.11.0"
+    }
+}
+
+apply plugin: "io.codearte.nexus-staging"
 
 subprojects {
     group 'org.apache.solr.hadoop'
     version PROJECT_VERSION
 
+    def subproject = it;
+
     apply plugin: 'java'
     apply plugin: 'idea'
     apply plugin: 'maven'
+    apply plugin: "signing"
 
     repositories {
         mavenCentral()
@@ -51,8 +64,61 @@ subprojects {
 
     artifacts {
         archives sourcesJar
-        //archives javadocJar
+        archives javadocJar
         archives testJar
         archives testSourceJar
     }
+
+    signing {
+        sign configurations.archives
+    }
+
+    uploadArchives {
+        repositories {
+            mavenDeployer {
+                beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+
+                repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
+                    authentication(userName: ossrhUser, password: ossrhPassword)
+                }
+
+                snapshotRepository(url: "https://oss.sonatype.org/content/repositories/snapshots/") {
+                    authentication(userName: ossrhUser, password: ossrhPassword)
+                }
+
+                pom.project {
+                    name project.name
+                    packaging "jar"
+                    description "Utilities for creation of Solr indexes using mapreduce"
+                    url "https://github.com/riskiq/solr-map-reduce"
+
+                    scm {
+                        connection 'scm:git:git@github.com:RiskIQ/solr-map-reduce.git'
+                        developerConnection 'scm:git:git@github.com:RiskIQ/solr-map-reduce.git'
+                        url "git@github.com:RiskIQ/solr-map-reduce.git"
+                    }
+
+                    licenses {
+                        license {
+                            name 'The Apache License, Version 2.0'
+                            url 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                        }
+                    }
+
+                    developers {
+                        developer {
+                            id 'jlinn'
+                            name 'Joe Linn'
+                            email 'joe.linn@riskiq.net'
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+nexusStaging {
+    username = ossrhUser
+    password = ossrhPassword
 }
