@@ -7,4 +7,5 @@ jdk:
 
 sudo: false
 
-script: clean test
+install: true
+script: ./gradlew clean test
