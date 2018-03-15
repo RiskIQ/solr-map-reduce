@@ -6,3 +6,5 @@ jdk:
   - oraclejdk9
 
 sudo: false
+
+script: clean test
