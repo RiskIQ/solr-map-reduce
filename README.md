@@ -1,5 +1,5 @@
 # Solr MapReduce
-[![Build Status](https://secure.travis-ci.org/riskiq/solr-map-reduce.png?branch=master)](http://travis-ci.org/riskiq/solr-map-reduce)
+[![Build Status](https://secure.travis-ci.org/RiskIQ/solr-map-reduce.png?branch=master)](http://travis-ci.org/RiskIQ/solr-map-reduce)
 
 ## What?
 This library provides utilities for creating Solr indexes using mapreduce.

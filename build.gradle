@@ -9,6 +9,9 @@ buildscript {
 
 apply plugin: "io.codearte.nexus-staging"
 
+String mavenUser = project.hasProperty("ossrhUser") ? ossrhUser : "";
+String mavenPassword = project.hasProperty("ossrhPassword") ? ossrhPassword : "";
+
 subprojects {
     group 'org.apache.solr.hadoop'
     version PROJECT_VERSION
@@ -79,11 +82,11 @@ subprojects {
                 beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
 
                 repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
-                    authentication(userName: ossrhUser, password: ossrhPassword)
+                    authentication(userName: mavenUser, password: mavenPassword)
                 }
 
                 snapshotRepository(url: "https://oss.sonatype.org/content/repositories/snapshots/") {
-                    authentication(userName: ossrhUser, password: ossrhPassword)
+                    authentication(userName: mavenUser, password: mavenPassword)
                 }
 
                 pom.project {
@@ -119,6 +122,6 @@ subprojects {
 }
 
 nexusStaging {
-    username = ossrhUser
-    password = ossrhPassword
+    username = mavenUser
+    password = mavenPassword
 }
