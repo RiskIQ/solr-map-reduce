@@ -6,8 +6,6 @@ dependencies {
     compile group: "io.dropwizard.metrics", name: "metrics-core", version: DROPWIZARD_VERSION
     compile group: "io.dropwizard.metrics", name: "metrics-healthchecks", version: DROPWIZARD_VERSION
     compile group: "com.typesafe", name: "config", version: "1.0.2"
-    /*compile group: 'org.restlet.jee', name: 'org.restlet', version: '2.3.0'
-    compile group: 'org.restlet.jee', name: 'org.restlet.ext.servlet', version: '2.3.0'*/
 
 
 

@@ -13,7 +13,7 @@ String mavenUser = project.hasProperty("ossrhUser") ? ossrhUser : "";
 String mavenPassword = project.hasProperty("ossrhPassword") ? ossrhPassword : "";
 
 subprojects {
-    group 'org.apache.solr.hadoop'
+    group 'com.riskiq'
     version PROJECT_VERSION
 
     def subproject = it;
@@ -72,53 +72,56 @@ subprojects {
         archives testSourceJar
     }
 
-    signing {
-        sign configurations.archives
-    }
+    if (project.hasProperty("release")) {
+        signing {
+            sign configurations.archives
+        }
 
-    uploadArchives {
-        repositories {
-            mavenDeployer {
-                beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+        uploadArchives {
+            repositories {
+                mavenDeployer {
+                    beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
 
-                repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
-                    authentication(userName: mavenUser, password: mavenPassword)
-                }
-
-                snapshotRepository(url: "https://oss.sonatype.org/content/repositories/snapshots/") {
-                    authentication(userName: mavenUser, password: mavenPassword)
-                }
-
-                pom.project {
-                    name project.name
-                    packaging "jar"
-                    description "Utilities for creation of Solr indexes using mapreduce"
-                    url "https://github.com/riskiq/solr-map-reduce"
-
-                    scm {
-                        connection 'scm:git:git@github.com:RiskIQ/solr-map-reduce.git'
-                        developerConnection 'scm:git:git@github.com:RiskIQ/solr-map-reduce.git'
-                        url "git@github.com:RiskIQ/solr-map-reduce.git"
+                    repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
+                        authentication(userName: mavenUser, password: mavenPassword)
                     }
 
-                    licenses {
-                        license {
-                            name 'The Apache License, Version 2.0'
-                            url 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                    snapshotRepository(url: "https://oss.sonatype.org/content/repositories/snapshots/") {
+                        authentication(userName: mavenUser, password: mavenPassword)
+                    }
+
+                    pom.project {
+                        name project.name
+                        packaging "jar"
+                        description "Utilities for creation of Solr indexes using mapreduce"
+                        url "https://github.com/riskiq/solr-map-reduce"
+
+                        scm {
+                            connection 'scm:git:git@github.com:RiskIQ/solr-map-reduce.git'
+                            developerConnection 'scm:git:git@github.com:RiskIQ/solr-map-reduce.git'
+                            url "git@github.com:RiskIQ/solr-map-reduce.git"
                         }
-                    }
 
-                    developers {
-                        developer {
-                            id 'jlinn'
-                            name 'Joe Linn'
-                            email 'joe.linn@riskiq.net'
+                        licenses {
+                            license {
+                                name 'The Apache License, Version 2.0'
+                                url 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                            }
+                        }
+
+                        developers {
+                            developer {
+                                id 'jlinn'
+                                name 'Joe Linn'
+                                email 'joe.linn@riskiq.net'
+                            }
                         }
                     }
                 }
             }
         }
     }
+
 }
 
 nexusStaging {

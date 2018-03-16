@@ -1,4 +1,4 @@
 rootProject.name = 'solr-map-reduce'
 include 'map-reduce'
 include 'morphlines-core'
-
+findProject(':map-reduce')?.name = 'solr-map-reduce'
