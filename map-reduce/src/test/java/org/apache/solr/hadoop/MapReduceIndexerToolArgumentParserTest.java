@@ -16,14 +16,18 @@
  */
 package org.apache.solr.hadoop;
 
+import com.carrotsearch.randomizedtesting.annotations.ThreadLeakFilters;
 import org.apache.commons.io.FileUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.lucene.util.Constants;
+import org.apache.lucene.util.QuickPatchThreadsFilter;
+import org.apache.solr.SolrIgnoredThreadsFilter;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.cloud.AbstractZkTestCase;
 import org.apache.solr.hadoop.dedup.NoChangeUpdateConflictResolver;
 import org.apache.solr.hadoop.dedup.RetainMostRecentUpdateConflictResolver;
+import org.apache.solr.hadoop.hack.FileSystemThreadsFilter;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -38,6 +42,11 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Locale;
 
+@ThreadLeakFilters(defaultFilters = true, filters = {
+        FileSystemThreadsFilter.class,
+        SolrIgnoredThreadsFilter.class,
+        QuickPatchThreadsFilter.class
+})
 public class MapReduceIndexerToolArgumentParserTest extends SolrTestCaseJ4 {
   
   private Configuration conf;
