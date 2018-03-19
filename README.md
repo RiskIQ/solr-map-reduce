@@ -13,6 +13,20 @@ As heavy users of this library, we feel that these tools are still useful and va
 be maintained and made available to the open-source community.  
 
 ## How?
+Maven:
+```xml
+<dependency>
+    <groupId>com.riskiq</groupId>
+    <artifactId>solr-map-reduce</artifactId>
+    <version>6.6.3.0</version>
+</dependency>
+```
+
+Gradle:
+```groovy
+compile group: 'com.riskiq', name: 'solr-map-reduce', version: '6.6.3.0'
+```
+
 Example lifted from [the original readme](https://github.com/apache/lucene-solr/tree/releases/lucene-solr/6.5.1/solr/contrib/map-reduce):
 
 ```bash
