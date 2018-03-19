@@ -1,27 +1,38 @@
 buildscript {
     repositories {
         mavenCentral()
+        maven {
+            url 'https://plugins.gradle.org/m2/'
+        }
     }
     dependencies {
         classpath "io.codearte.gradle.nexus:gradle-nexus-staging-plugin:0.11.0"
+        classpath 'net.researchgate:gradle-release:2.6.0'
     }
 }
 
 apply plugin: "io.codearte.nexus-staging"
+if (project.hasProperty("release")) {
+    apply plugin: 'net.researchgate.release'
+}
 
 String mavenUser = project.hasProperty("ossrhUser") ? ossrhUser : "";
 String mavenPassword = project.hasProperty("ossrhPassword") ? ossrhPassword : "";
 
+allprojects {
+    apply plugin: 'java'
+}
+
 subprojects {
     group 'com.riskiq'
-    version PROJECT_VERSION
+    version version
 
     def subproject = it;
 
-    apply plugin: 'java'
     apply plugin: 'idea'
     apply plugin: 'maven'
     apply plugin: "signing"
+
 
     repositories {
         mavenCentral()
@@ -73,6 +84,10 @@ subprojects {
     }
 
     if (project.hasProperty("release")) {
+
+        beforeReleaseBuild.dependsOn test
+        afterReleaseBuild.dependsOn uploadArchives
+
         signing {
             sign configurations.archives
         }
@@ -127,4 +142,5 @@ subprojects {
 nexusStaging {
     username = mavenUser
     password = mavenPassword
+    packageGroup = "com.riskiq"
 }
