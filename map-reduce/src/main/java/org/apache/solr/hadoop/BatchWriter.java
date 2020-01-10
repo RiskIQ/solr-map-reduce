@@ -18,11 +18,13 @@ package org.apache.solr.hadoop;
 
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
 import org.apache.hadoop.mapreduce.TaskID;
+import org.apache.lucene.index.SegmentInfos;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.embedded.EmbeddedSolrServer;
 import org.apache.solr.client.solrj.response.UpdateResponse;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.util.ExecutorUtil;
+import org.apache.solr.core.SolrCore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -202,7 +204,11 @@ class BatchWriter {
     solr.commit(true, false);
     context.setStatus("Optimizing Solr");
     int maxSegments = context.getConfiguration().getInt(SolrOutputFormat.SOLR_RECORD_WRITER_MAX_SEGMENTS, 1);
-    LOG.info("Optimizing Solr: forcing merge down to {} segments", maxSegments);
+    int currentSegments = 0;
+    for (SolrCore core : solr.getCoreContainer().getCores()) {
+      currentSegments += core.withSearcher(s -> SegmentInfos.readLatestCommit(s.getIndexReader().directory()).size());
+    }
+    LOG.info("Optimizing Solr: forcing merge down from {} to {} segments", currentSegments, maxSegments);
     long start = System.nanoTime();
     solr.optimize(true, false, maxSegments);
     context.getCounter(SolrCounters.class.getName(), SolrCounters.PHYSICAL_REDUCER_MERGE_TIME.toString()).increment(System.nanoTime() - start);

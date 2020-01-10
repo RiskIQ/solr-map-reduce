@@ -117,7 +117,7 @@ public class TreeMergeOutputFormat extends FileOutputFormat<Text, NullWritable> 
 //          ((TieredMergePolicy) mergePolicy).setMaxMergeAtOnce(10000);       
 //          ((TieredMergePolicy) mergePolicy).setSegmentsPerTier(10000);
         } else if (mergePolicy instanceof LogMergePolicy) {
-          ((LogMergePolicy) mergePolicy).setNoCFSRatio(0.0);
+          mergePolicy.setNoCFSRatio(0.0);
         }
         LOG.info("Using mergePolicy: {}", mergePolicy);
         
@@ -159,7 +159,7 @@ public class TreeMergeOutputFormat extends FileOutputFormat<Text, NullWritable> 
 
         // Set Solr's commit data so the created index is usable by SolrCloud. E.g. Currently SolrCloud relies on
         // commitTimeMSec in the commit data to do replication.
-        SolrIndexWriter.setCommitData(writer);
+        SolrIndexWriter.setCommitData(writer, 1);
 
         timer = new RTimer();
         LOG.info("Optimizing Solr: Closing index writer");

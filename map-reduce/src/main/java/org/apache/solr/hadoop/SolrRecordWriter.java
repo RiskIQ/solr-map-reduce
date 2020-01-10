@@ -17,14 +17,12 @@
 package org.apache.solr.hadoop;
 
 import com.google.common.collect.ImmutableMap;
+import org.apache.commons.io.FileUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.filecache.DistributedCache;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.mapreduce.RecordWriter;
-import org.apache.hadoop.mapreduce.Reducer;
-import org.apache.hadoop.mapreduce.TaskAttemptContext;
-import org.apache.hadoop.mapreduce.TaskID;
+import org.apache.hadoop.mapreduce.*;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.embedded.EmbeddedSolrServer;
 import org.apache.solr.common.SolrInputDocument;
@@ -32,8 +30,10 @@ import org.apache.solr.core.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
+import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -104,7 +104,7 @@ class SolrRecordWriter<K, V> extends RecordWriter<K, V> {
     try {
       heartBeater.needHeartBeat();
 
-      Path solrHomeDir = SolrRecordWriter.findSolrConfig(conf);
+      Path solrHomeDir = SolrRecordWriter.findSolrConfig(context);
       FileSystem fs = outputShardDir.getFileSystem(conf);
       EmbeddedSolrServer solr = createEmbeddedSolrServer(solrHomeDir, fs, outputShardDir);
       batchWriter = new BatchWriter(solr, batchSize,
@@ -130,7 +130,37 @@ class SolrRecordWriter<K, V> extends RecordWriter<K, V> {
 
     String dataDirStr = solrDataDir.toUri().toString();
 
-    SolrResourceLoader loader = new SolrResourceLoader(Paths.get(solrHomeDir.toString()), null, null);
+
+
+    if (solrHomeDir.toUri().getScheme() == null) {
+      LOG.info("solrHomeDir {} missing scheme. Assuming file://", solrHomeDir);
+      solrHomeDir = new Path("file://" + solrHomeDir.toString());
+    }
+    /*
+     * Hadoop's distributed cache is shared amongst all containers which run on the same node. Therefore, we must
+     * ensure that the core directory (and name) for each container is unique.
+     */
+    String coreName = "core-" + UUID.randomUUID();
+    Path coreHome = new Path(solrHomeDir, coreName);
+    if (coreHome.toUri().getScheme() == null || coreHome.toUri().getScheme().startsWith("file")) {
+      // local file system
+      File coreHomeDir = new File(coreHome.toUri());
+      Files.createDirectory(coreHomeDir.toPath());
+      File solrHomeFile = new File(solrHomeDir.toUri());
+      FileUtils.copyFile(new File(solrHomeFile, "conf/schema.xml"), new File(coreHomeDir, coreName + "/schema.xml"));
+      FileUtils.copyFile(new File(solrHomeFile, "conf/solrconfig.xml"), new File(coreHomeDir, coreName + "/solrconfig.xml"));
+      FileUtils.copyFile(new File(solrHomeFile, "solr.xml"), new File(coreHomeDir, "solr.xml"));
+    } else {
+      // hdfs / mfs
+      fs.mkdirs(coreHome);
+      fs.copyFromLocalFile(new Path(solrHomeDir, "conf/schema.xml"), new Path(coreHome, coreName + "/schema.xml"));
+      fs.copyFromLocalFile(new Path(solrHomeDir, "conf/solrconfig.xml"), new Path(coreHome, coreName + "/solrconfig.xml"));
+      fs.copyFromLocalFile(new Path(solrHomeDir, "solr.xml"), new Path(coreHome, "solr.xml"));
+    }
+
+    solrHomeDir = coreHome;
+
+    SolrResourceLoader loader = new SolrResourceLoader(Paths.get(solrHomeDir.toUri()), null, null);
 
     LOG.info(String
         .format(Locale.ENGLISH, 
@@ -145,19 +175,19 @@ class SolrRecordWriter<K, V> extends RecordWriter<K, V> {
     System.setProperty("solr.hdfs.blockcache.enabled", "false");
     System.setProperty("solr.autoCommit.maxTime", "600000");
     System.setProperty("solr.autoSoftCommit.maxTime", "-1");
-    
+    System.setProperty("solr.home.directory", solrHomeDir.toUri().toString());
+
     CoreContainer container = new CoreContainer(loader);
     container.load();
-    SolrCore core = container.create("core1", ImmutableMap.of(CoreDescriptor.CORE_DATADIR, dataDirStr));
-    
+    SolrCore core = container.create(coreName, ImmutableMap.of(CoreDescriptor.CORE_DATADIR, dataDirStr));
+
     if (!(core.getDirectoryFactory() instanceof HdfsDirectoryFactory)) {
       throw new UnsupportedOperationException(
           "Invalid configuration. Currently, the only DirectoryFactory supported is "
               + HdfsDirectoryFactory.class.getSimpleName());
     }
 
-    EmbeddedSolrServer solr = new EmbeddedSolrServer(container, "core1");
-    return solr;
+    return new EmbeddedSolrServer(container, coreName);
   }
 
   public static void incrementCounter(TaskID taskId, String groupName, String counterName, long incr) {
@@ -192,6 +222,11 @@ class SolrRecordWriter<K, V> extends RecordWriter<K, V> {
     throw new IOException(String.format(Locale.ENGLISH,
         "No local cache archives, where is %s:%s", SolrOutputFormat
             .getSetupOk(), SolrOutputFormat.getZipName(conf)));
+  }
+
+
+  public static Path findSolrConfig(JobContext job) throws IOException {
+    return findSolrConfig(job.getConfiguration());
   }
 
   /**

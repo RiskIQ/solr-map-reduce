@@ -29,6 +29,7 @@ import java.io.File;
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Downloads SolrCloud information from ZooKeeper.
@@ -64,8 +65,15 @@ final class ZooKeeperDownloader {
 
     // first check for alias
     byte[] aliasData = zkClient.getData(ZkStateReader.ALIASES, null, null, true);
-    Aliases aliases = ClusterState.load(aliasData);
-    String alias = aliases.getCollectionAlias(collection);
+    Aliases aliases = new ZkStateReader(zkClient).getAliases();
+    Map<String, List<String>> collectionAliasListMap = aliases.getCollectionAliasListMap();
+    String alias = null;
+    for (Map.Entry<String, List<String>> entry : collectionAliasListMap.entrySet()) {
+      if (entry.getValue().contains(collection)) {
+        alias = entry.getKey();
+      }
+    }
+
     if (alias != null) {
       List<String> aliasList = StrUtils.splitSmart(alias, ",", true);
       if (aliasList.size() > 1) {

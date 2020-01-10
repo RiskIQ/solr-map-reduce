@@ -30,7 +30,7 @@ public class SolrMapper<KEYIN, VALUEIN> extends Mapper<KEYIN, VALUEIN, Text, Sol
   protected void setup(Context context) throws IOException, InterruptedException {
     Utils.getLogConfigFile(context.getConfiguration());
     super.setup(context);
-    solrHomeDir = SolrRecordWriter.findSolrConfig(context.getConfiguration());
+    solrHomeDir = SolrRecordWriter.findSolrConfig(context);
   }
   
   protected Path getSolrHomeDir() {

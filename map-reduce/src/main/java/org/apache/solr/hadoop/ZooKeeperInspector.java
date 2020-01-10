@@ -145,8 +145,8 @@ final class ZooKeeperInspector {
   private String checkForAlias(SolrZkClient zkClient, String collection)
       throws KeeperException, InterruptedException {
     byte[] aliasData = zkClient.getData(ZkStateReader.ALIASES, null, null, true);
-    Aliases aliases = ClusterState.load(aliasData);
-    String alias = aliases.getCollectionAlias(collection);
+    Aliases aliases = Aliases.fromJSON(aliasData, 1); //TODO: version?
+    String alias = aliases.getCollectionAliasMap().get(collection);
     if (alias != null) {
       List<String> aliasList = StrUtils.splitSmart(alias, ",", true);
       if (aliasList.size() > 1) {
