@@ -32,3 +32,7 @@ dependencies {
     testCompile group: 'junit', name: 'junit', version: '4.12'
     testCompile group: 'org.hamcrest', name: 'hamcrest', version: '2.2'
 }
+
+test {
+    systemProperty "test.solr.allowed.securerandom", "NativePRNG"
+}
