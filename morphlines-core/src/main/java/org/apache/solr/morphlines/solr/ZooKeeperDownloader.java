@@ -64,13 +64,14 @@ final class ZooKeeperDownloader {
     String configName = null;
 
     // first check for alias
-    byte[] aliasData = zkClient.getData(ZkStateReader.ALIASES, null, null, true);
-    Aliases aliases = new ZkStateReader(zkClient).getAliases();
-    Map<String, List<String>> collectionAliasListMap = aliases.getCollectionAliasListMap();
     String alias = null;
-    for (Map.Entry<String, List<String>> entry : collectionAliasListMap.entrySet()) {
-      if (entry.getValue().contains(collection)) {
-        alias = entry.getKey();
+    try (ZkStateReader zkStateReader = new ZkStateReader(zkClient)) {
+      Aliases aliases = zkStateReader.getAliases();
+      Map<String, List<String>> collectionAliasListMap = aliases.getCollectionAliasListMap();
+      for (Map.Entry<String, List<String>> entry : collectionAliasListMap.entrySet()) {
+        if (entry.getValue().contains(collection)) {
+          alias = entry.getKey();
+        }
       }
     }
 
