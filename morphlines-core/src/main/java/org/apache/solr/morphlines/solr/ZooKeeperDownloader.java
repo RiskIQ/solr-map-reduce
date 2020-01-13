@@ -22,6 +22,7 @@ import org.apache.solr.cloud.ZkController;
 import org.apache.solr.common.cloud.*;
 import org.apache.solr.common.util.StrUtils;
 import org.apache.zookeeper.KeeperException;
+import org.apache.zookeeper.data.Stat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,7 +30,6 @@ import java.io.File;
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Downloads SolrCloud information from ZooKeeper.
@@ -61,19 +61,13 @@ final class ZooKeeperDownloader {
     if (collection == null) {
       throw new IllegalArgumentException("collection must not be null");
     }
-    String configName = null;
 
     // first check for alias
-    String alias = null;
-    try (ZkStateReader zkStateReader = new ZkStateReader(zkClient)) {
-      Aliases aliases = zkStateReader.getAliases();
-      Map<String, List<String>> collectionAliasListMap = aliases.getCollectionAliasListMap();
-      for (Map.Entry<String, List<String>> entry : collectionAliasListMap.entrySet()) {
-        if (entry.getValue().contains(collection)) {
-          alias = entry.getKey();
-        }
-      }
-    }
+    Stat stat = new Stat();
+    byte[] aliasData = zkClient.getData(ZkStateReader.ALIASES, null, stat, true);
+    Aliases aliases = Aliases.fromJSON(aliasData, stat.getVersion());
+    String configName = null;
+    String alias = aliases.getCollectionAliasMap().get(collection);
 
     if (alias != null) {
       List<String> aliasList = StrUtils.splitSmart(alias, ",", true);
