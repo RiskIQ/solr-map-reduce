@@ -55,7 +55,7 @@ public final class LoadSolrBuilder implements CommandBuilder {
   private static final class LoadSolr extends AbstractCommand {
     
     private final DocumentLoader loader;
-    private final Map<String, Float> boosts = new HashMap();
+    private final Map<String, Float> boosts = new HashMap<>();
     private final Timer elapsedTime;    
     
     public LoadSolr(CommandBuilder builder, Config config, Command parent, Command child, MorphlineContext context) {
@@ -126,10 +126,10 @@ public final class LoadSolrBuilder implements CommandBuilder {
     
     private SolrInputDocument convert(Record record) {
       Map<String, Collection<Object>> map = record.getFields().asMap();
-      SolrInputDocument doc = new SolrInputDocument(new HashMap(2 * map.size()));
+      SolrInputDocument doc = new SolrInputDocument(new HashMap<>(2 * map.size()));
       for (Map.Entry<String, Collection<Object>> entry : map.entrySet()) {
         String key = entry.getKey();
-        doc.setField(key, entry.getValue(), getBoost(key));
+        doc.setField(key, entry.getValue());
       }
       return doc;
     }

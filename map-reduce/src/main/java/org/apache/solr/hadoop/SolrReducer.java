@@ -25,8 +25,6 @@ import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.hadoop.dedup.NoChangeUpdateConflictResolver;
 import org.apache.solr.hadoop.dedup.RetainMostRecentUpdateConflictResolver;
 import org.apache.solr.hadoop.dedup.UpdateConflictResolver;
-import org.kitesdk.morphline.api.ExceptionHandler;
-import org.kitesdk.morphline.base.FaultTolerance;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,11 +45,11 @@ public class SolrReducer extends Reducer<Text, SolrInputDocumentWritable, Text, 
 
   private UpdateConflictResolver resolver;
   private HeartBeater heartBeater;
-  private ExceptionHandler exceptionHandler;
-  
+
   public static final String UPDATE_CONFLICT_RESOLVER = SolrReducer.class.getName() + ".updateConflictResolver";
-  
+
   private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+  private static final Class<? extends Throwable>[] RECOVERABLE_EXCEPTIONS = new Class[]{SolrServerException.class};
   
   @Override
   protected void setup(Context context) throws IOException, InterruptedException {
@@ -66,11 +64,6 @@ public class SolrReducer extends Reducer<Text, SolrInputDocumentWritable, Text, 
      * resolver.configure(context.getConfiguration()) if the resolver
      * implements org.apache.hadoop.conf.Configurable
      */
-
-    this.exceptionHandler = new FaultTolerance(
-        context.getConfiguration().getBoolean(FaultTolerance.IS_PRODUCTION_MODE, false), 
-        context.getConfiguration().getBoolean(FaultTolerance.IS_IGNORING_RECOVERABLE_EXCEPTIONS, false),
-        context.getConfiguration().get(FaultTolerance.RECOVERABLE_EXCEPTION_CLASSES, SolrServerException.class.getName()));
     
     this.heartBeater = new HeartBeater(context);
   }
@@ -83,7 +76,11 @@ public class SolrReducer extends Reducer<Text, SolrInputDocumentWritable, Text, 
     } catch (Exception e) {
       LOG.error("Unable to process key " + key, e);
       context.getCounter(getClass().getName() + ".errors", e.getClass().getName()).increment(1);
-      exceptionHandler.handleException(e, null);
+      if (isRecoverableException(e)) {
+        LOG.warn("Ignoring recoverable exception: " + e.getMessage(), e);
+      } else {
+        throw new RuntimeException(e);
+      }
     } finally {
       heartBeater.cancelHeartBeat();
     }
@@ -125,6 +122,29 @@ public class SolrReducer extends Reducer<Text, SolrInputDocumentWritable, Text, 
       Preconditions.checkArgument(partition == taskId, 
           "mapred.task.partition: " + partition + " not equal to reducer taskId: " + taskId);      
     }
+  }
+
+
+  /**
+   * Determines whether or not the given {@link Throwable} constitutes an error from which the indexing process can
+   * recover.
+   * @param t an error which was thrown during the indexing process
+   * @return true if we should log a warning and proceed; false if the given Throwable represents a fatal error
+   */
+  private boolean isRecoverableException(Throwable t) {
+    while (true) {
+      for (Class<?> clazz : RECOVERABLE_EXCEPTIONS) {
+        if (clazz.isAssignableFrom(t.getClass())) {
+          return true;
+        }
+      }
+      Throwable cause = t.getCause();
+      if (cause == null || cause == t) {
+        return false;
+      }
+      t = cause;
+    }
+
   }
   
   

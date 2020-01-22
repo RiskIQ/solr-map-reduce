@@ -55,6 +55,7 @@ import org.apache.solr.common.params.CollectionParams.CollectionAction;
 import org.apache.solr.common.params.CoreAdminParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.util.NamedList;
+import org.apache.solr.common.util.TimeSource;
 import org.apache.solr.hadoop.hack.MiniMRClientCluster;
 import org.apache.solr.hadoop.hack.MiniMRClientClusterFactory;
 import org.apache.solr.morphlines.solr.AbstractSolrMorphlineTestBase;
@@ -504,9 +505,9 @@ public class MorphlineGoLiveMiniMRTest extends AbstractFullDistribZkTestBase {
     // try using zookeeper with replication
     String replicatedCollection = "replicated_collection";
     if (TEST_NIGHTLY) {
-      createCollection(replicatedCollection, 3, 3, 3);
+      createCollection(replicatedCollection, replicatedCollection, 3, 3, 3);  //TODO: config name?
     } else {
-      createCollection(replicatedCollection, 2, 3, 2);
+      createCollection(replicatedCollection, replicatedCollection, 2, 3, 2);
     }
     waitForRecoveriesToFinish(false);
     cloudClient.setDefaultCollection(replicatedCollection);
@@ -624,7 +625,7 @@ public class MorphlineGoLiveMiniMRTest extends AbstractFullDistribZkTestBase {
     request.setPath("/admin/collections");
     cloudClient.request(request);
 
-    final TimeOut timeout = new TimeOut(10, TimeUnit.SECONDS);
+    final TimeOut timeout = new TimeOut(10, TimeUnit.SECONDS, TimeSource.CURRENT_TIME);
     while (cloudClient.getZkStateReader().getClusterState().hasCollection(replicatedCollection)) {
       if (timeout.hasTimedOut()) {
          throw new AssertionError("Timeout waiting to see removed collection leave clusterstate");
@@ -634,9 +635,9 @@ public class MorphlineGoLiveMiniMRTest extends AbstractFullDistribZkTestBase {
     }
     
     if (TEST_NIGHTLY) {
-      createCollection(replicatedCollection, 3, 3, 3);
+      createCollection(replicatedCollection, replicatedCollection, 3, 3, 3);
     } else {
-      createCollection(replicatedCollection, 2, 3, 2);
+      createCollection(replicatedCollection, replicatedCollection, 2, 3, 2);
     }
     
     waitForRecoveriesToFinish(replicatedCollection, false);
@@ -685,8 +686,7 @@ public class MorphlineGoLiveMiniMRTest extends AbstractFullDistribZkTestBase {
 
   private void checkConsistency(String replicatedCollection)
       throws Exception {
-    Collection<Slice> slices = cloudClient.getZkStateReader().getClusterState()
-        .getSlices(replicatedCollection);
+    Collection<Slice> slices = cloudClient.getZkStateReader().getClusterState().getCollection(replicatedCollection).getSlices();
     for (Slice slice : slices) {
       Collection<Replica> replicas = slice.getReplicas();
       long found = -1;
@@ -707,7 +707,7 @@ public class MorphlineGoLiveMiniMRTest extends AbstractFullDistribZkTestBase {
   }
   
   private void getShardUrlArgs(List<String> args, String replicatedCollection) {
-    Collection<Slice> slices = cloudClient.getZkStateReader().getClusterState().getSlices(replicatedCollection);
+    Collection<Slice> slices = cloudClient.getZkStateReader().getClusterState().getCollection(replicatedCollection).getSlices();
     for (Slice slice : slices) {
       Collection<Replica> replicas = slice.getReplicas();
       for (Replica replica : replicas) {
@@ -729,18 +729,16 @@ public class MorphlineGoLiveMiniMRTest extends AbstractFullDistribZkTestBase {
     fs.copyFromLocalFile(new Path(DOCUMENTS_DIR, localFile), dataDir);
     return INPATH;
   }
-  
-  @Override
-  public JettySolrRunner createJetty(File solrHome, String dataDir,
-      String shardList, String solrConfigOverride, String schemaOverride)
-      throws Exception {
 
+
+  @Override
+  public JettySolrRunner createJetty(File solrHome, String dataDir, String shardList, String solrConfigOverride, String schemaOverride, Replica.Type replicaType) throws Exception {
     Properties props = new Properties();
     if (solrConfigOverride != null)
       props.setProperty("solrconfig", solrConfigOverride);
     if (schemaOverride != null)
       props.setProperty("schema", schemaOverride);
-    if (shardList != null) 
+    if (shardList != null)
       props.setProperty("shards", shardList);
 
     String collection = System.getProperty("collection");
@@ -750,9 +748,10 @@ public class MorphlineGoLiveMiniMRTest extends AbstractFullDistribZkTestBase {
 
     JettySolrRunner jetty = new JettySolrRunner(solrHome.getAbsolutePath(), props, buildJettyConfig(context));
     jetty.start();
-    
+
     return jetty;
   }
+
   
   private static void putConfig(SolrZkClient zkClient, File solrhome, String name) throws Exception {
     putConfig(zkClient, solrhome, name, name);

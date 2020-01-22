@@ -17,7 +17,6 @@
 package org.apache.solr.hadoop;
 
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.filecache.DistributedCache;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.mapreduce.Job;
@@ -149,9 +148,15 @@ public class SolrOutputFormat<K, V> extends FileOutputFormat<K, V> {
 
   @Override
   public RecordWriter<K, V> getRecordWriter(TaskAttemptContext context) throws IOException, InterruptedException {
+    if (LOG.isTraceEnabled()) {
+      LOG.trace("About to create a SolrRecordWriter.");
+    }
     Utils.getLogConfigFile(context.getConfiguration());
     Path workDir = getDefaultWorkFile(context, "");
     int batchSize = getBatchSize(context.getConfiguration());
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Creating SolrRecordWriter instance with workDir {} and batchSize {}.", workDir, batchSize);
+    }
     return new SolrRecordWriter<>(context, workDir, batchSize);
   }
 
@@ -188,7 +193,7 @@ public class SolrOutputFormat<K, V> extends FileOutputFormat<K, V> {
     final URI baseZipUrl = fs.getUri().resolve(
         zipPath.toString() + '#' + getZipName(jobConf));
 
-    DistributedCache.addCacheArchive(baseZipUrl, jobConf);
+    job.addCacheArchive(baseZipUrl);
     LOG.debug("Set Solr distributed cache: {}", Arrays.asList(job.getCacheArchives()));
     LOG.debug("Set zipPath: {}", zipPath);
     // Actually send the path for the configuration zip file
@@ -222,6 +227,9 @@ public class SolrOutputFormat<K, V> extends FileOutputFormat<K, V> {
     ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(out));
     byte[] buf = new byte[1024];
     for (File f : files) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Adding file {} to distributed cache zip.", f.getAbsolutePath());
+      }
       ZipEntry ze = new ZipEntry(f.toString().substring(subst));
       zos.putNextEntry(ze);
       InputStream is = new FileInputStream(f);

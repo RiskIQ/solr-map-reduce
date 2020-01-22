@@ -37,7 +37,7 @@ subprojects {
     repositories {
         mavenCentral()
         maven {
-            url "http://maven.restlet.com"
+            url "https://maven.restlet.com"
         }
     }
 
@@ -58,6 +58,12 @@ subprojects {
         classifier "sources"
         from sourceSets.main.allSource
         group "build"
+    }
+
+    javadoc {
+        options.tags = [
+                "lucene.experimental:a:This API is experimental and might change in incompatible ways in the next release."
+        ]
     }
 
     task javadocJar(type: Jar, dependsOn: javadoc) {
@@ -135,6 +141,12 @@ subprojects {
                 }
             }
         }
+    }
+
+
+    task getDeps(type: Copy) {
+        from sourceSets.main.runtimeClasspath
+        into 'runtime/'
     }
 
 }
