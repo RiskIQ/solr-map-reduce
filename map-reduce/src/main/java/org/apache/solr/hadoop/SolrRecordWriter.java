@@ -144,12 +144,12 @@ class SolrRecordWriter<K, V> extends RecordWriter<K, V> {
     Path coreHome = new Path(solrHomeDir, coreName);
     if (coreHome.toUri().getScheme() == null || coreHome.toUri().getScheme().startsWith("file")) {
       // local file system
-      File coreHomeDir = new File(coreHome.toUri());
-      Files.createDirectory(coreHomeDir.toPath());
+      File coreHomeDir = new File(Files.createTempDirectory(coreName).toUri());
       File solrHomeFile = new File(solrHomeDir.toUri());
       FileUtils.copyFile(new File(solrHomeFile, "conf/schema.xml"), new File(coreHomeDir, coreName + "/schema.xml"));
       FileUtils.copyFile(new File(solrHomeFile, "conf/solrconfig.xml"), new File(coreHomeDir, coreName + "/solrconfig.xml"));
       FileUtils.copyFile(new File(solrHomeFile, "solr.xml"), new File(coreHomeDir, "solr.xml"));
+      coreHome = new Path(coreHomeDir.toURI());
     } else {
       // hdfs / mfs
       fs.mkdirs(coreHome);
