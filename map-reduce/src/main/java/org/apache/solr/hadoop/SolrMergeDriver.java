@@ -1,13 +1,13 @@
 package org.apache.solr.hadoop;
 
+import com.google.common.base.Preconditions;
+import com.google.common.io.ByteStreams;
 import com.google.common.math.IntMath;
 import org.apache.commons.cli.*;
+import org.apache.commons.cli.Options;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
-import org.apache.hadoop.fs.FSDataOutputStream;
-import org.apache.hadoop.fs.FileStatus;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.*;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
@@ -18,13 +18,12 @@ import org.apache.hadoop.util.ToolRunner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.BufferedWriter;
-import java.io.IOException;
-import java.io.OutputStreamWriter;
-import java.io.Writer;
+import java.io.*;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
+import java.text.NumberFormat;
 import java.util.Arrays;
+import java.util.Locale;
 
 /**
  * MapReduce driver which merges multiple Solr indices into a single index.  This should be run on the output of
@@ -138,6 +137,9 @@ public class SolrMergeDriver extends Configured implements Tool {
             mtreeMergeIteration++;
         }
 
+        if (!renameTreeMergeShardDirs(reducersPath, job, reducersPath.getFileSystem(job.getConfiguration()))) {
+            return -1;
+        }
         // normalize output shard dir prefix, i.e.
         // rename part-r-00000 to part-00000 (stems from zero tree merge iterations)
         // rename part-m-00000 to part-00000 (stems from > 0 tree merge iterations)
@@ -159,6 +161,56 @@ public class SolrMergeDriver extends Configured implements Tool {
         }
 
         return 0;
+    }
+
+
+    private boolean renameTreeMergeShardDirs(Path reducersPath, Job job, FileSystem fs) throws IOException {
+        final String dirPrefix = SolrOutputFormat.getOutputName(job);
+        FileStatus[] dirs = reducersPath.getFileSystem(getConf()).listStatus(reducersPath, path -> path.getName().startsWith(dirPrefix));
+        for (FileStatus dir : dirs) {
+            if (!dir.isDirectory()) {
+                throw new IllegalStateException("Not a directory: " + dir.getPath());
+            }
+        }
+
+        // Example: rename part-m-00004 to _part-m-00004
+        for (FileStatus dir : dirs) {
+            Path path = dir.getPath();
+            Path renamedPath = new Path(path.getParent(), "_" + path.getName());
+            if (!rename(path, renamedPath, fs)) {
+                return false;
+            }
+        }
+
+        // Example: rename _part-m-00004 to part-m-00002
+        for (FileStatus dir : dirs) {
+            Path path = dir.getPath();
+            Path renamedPath = new Path(path.getParent(), "_" + path.getName());
+
+            // read auxiliary metadata file (per task) that tells which taskId
+            // processed which split# aka solrShard
+            Path solrShardNumberFile = new Path(renamedPath, TreeMergeMapper.SOLR_SHARD_NUMBER);
+            InputStream in = fs.open(solrShardNumberFile);
+            byte[] bytes = ByteStreams.toByteArray(in);
+            in.close();
+            Preconditions.checkArgument(bytes.length > 0);
+            int solrShard = Integer.parseInt(new String(bytes, StandardCharsets.UTF_8));
+            if (!delete(solrShardNumberFile, false, fs)) {
+                return false;
+            }
+
+            // same as FileOutputFormat.NUMBER_FORMAT
+            NumberFormat numberFormat = NumberFormat.getInstance(Locale.ENGLISH);
+            numberFormat.setMinimumIntegerDigits(5);
+            numberFormat.setGroupingUsed(false);
+            Path finalPath = new Path(renamedPath.getParent(), dirPrefix + "-m-" + numberFormat.format(solrShard));
+
+            log.info("MTree merge renaming solr shard: " + solrShard + " from dir: " + dir.getPath() + " to dir: " + finalPath);
+            if (!rename(renamedPath, finalPath, fs)) {
+                return false;
+            }
+        }
+        return true;
     }
 
 
@@ -202,6 +254,15 @@ public class SolrMergeDriver extends Configured implements Tool {
         boolean success = fs.rename(src, dst);
         if (!success) {
             log.error("Cannot rename " + src + " to " + dst);
+        }
+        return success;
+    }
+
+
+    private boolean delete(Path path, boolean recursive, FileSystem fs) throws IOException {
+        boolean success = fs.delete(path, recursive);
+        if (!success) {
+            log.error("Cannot delete " + path);
         }
         return success;
     }
