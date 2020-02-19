@@ -1,3 +1,17 @@
+configurations.all {
+    exclude group: "org.apache.hadoop", module: "hadoop-hdfs-client"
+
+    resolutionStrategy {
+        eachDependency { details ->
+            def requested = details.requested;
+            if ("org.apache.hadoop".equals(requested.group)) {
+                details.useTarget group: requested.group, name: requested.name, version: HADOOP_VERSION
+            }
+        }
+    }
+}
+
+
 dependencies {
     compile project(":morphlines-core")
 
@@ -6,6 +20,7 @@ dependencies {
 
     compile group: 'com.riskiq.mapreduce', name: 'hadoop-io', version: '1.0.0'
     compile group: 'org.apache.hadoop', name: 'hadoop-common', version: HADOOP_VERSION
+    compile group: 'org.apache.hadoop', name: 'hadoop-hdfs', version: HADOOP_VERSION
     compile group: 'org.apache.hadoop', name: 'hadoop-mapreduce-client-core', version: HADOOP_VERSION
 
     compile "net.sourceforge.argparse4j:argparse4j:0.4.3"
@@ -31,8 +46,4 @@ dependencies {
     testCompile group: 'rome', name: 'rome', version: '1.0'
     testCompile group: 'junit', name: 'junit', version: '4.12'
     testCompile group: 'org.hamcrest', name: 'hamcrest', version: '2.2'
-}
-
-test {
-    systemProperty "test.solr.allowed.securerandom", "NativePRNG"
 }

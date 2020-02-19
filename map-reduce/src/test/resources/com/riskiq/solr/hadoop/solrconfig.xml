@@ -1,0 +1,30 @@
+<config>
+  <luceneMatchVersion>7.7.2</luceneMatchVersion>
+
+  <indexConfig>
+    <lockType>${solr.lock.type:hdfs}</lockType>
+  </indexConfig>
+
+  <autoCommit>
+    <maxDocs>100000</maxDocs>
+    <maxTime>300000</maxTime>
+    <openSearcher>false</openSearcher>
+  </autoCommit>
+
+  <schemaFactory class="ClassicIndexSchemaFactory"/>
+
+  <directoryFactory name="DirectoryFactory" class="com.riskiq.solr.hadoop.LocalHdfsDirectoryFactory">
+    <str name="solr.hdfs.home">${solr.home.directory:file:///tmp/}</str>
+    <bool name="solr.hdfs.blockcache.enabled">true</bool>
+    <bool name="solr.hdfs.blockcache.read.enabled">true</bool>
+    <bool name="solr.hdfs.blockcache.direct.memory.allocation">true</bool>
+    <bool name="solr.hdfs.blockcache.write.enabled">false</bool>
+
+    <int name="solr.hdfs.blockcache.slab.count">1</int>
+    <int name="solr.hdfs.blockcache.blocksperbank">16384</int>
+
+    <bool name="solr.hdfs.nrtcachingdirectory.enable">false</bool>
+    <int name="solr.hdfs.nrtcachingdirectory.maxmergesizemb">192</int>
+    <int name="solr.hdfs.nrtcachingdirectory.maxcachedmb">2048</int>
+  </directoryFactory>
+</config>
