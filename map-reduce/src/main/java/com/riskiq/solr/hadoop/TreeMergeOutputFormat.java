@@ -20,6 +20,7 @@ import com.google.common.base.Preconditions;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.RecordWriter;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
@@ -28,6 +29,7 @@ import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.misc.IndexMergeTool;
 import org.apache.lucene.store.Directory;
 import org.apache.solr.store.hdfs.HdfsDirectory;
+import org.apache.solr.store.hdfs.HdfsLockFactory;
 import org.apache.solr.update.SolrIndexWriter;
 import org.apache.solr.util.RTimer;
 import org.slf4j.Logger;
@@ -47,6 +49,29 @@ import java.util.List;
  */
 public class TreeMergeOutputFormat extends FileOutputFormat<Text, NullWritable> {
   private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
+  /**
+   * Configuration parameter which sets the read buffer size of {@link HdfsDirectory} in BYTES. Defaults to
+   * {@link HdfsDirectory#DEFAULT_BUFFER_SIZE}, which, at the time of this writing, is 4096.
+   */
+  public static final String CONFIG_HDFS_DIRECTORY_BUFFER_SIZE = TreeMergeOutputFormat.class.getName() + ".hdfsDirectory.buffer.size";
+  /**
+   * Configuration parameter which sets the RAM buffer size of {@link IndexWriterConfig} in MEGABYTES. Defaults to
+   * {@link IndexWriterConfig#DEFAULT_RAM_BUFFER_SIZE_MB} (16MB at the time of this writing).
+   */
+  public static final String CONFIG_INDEX_WRITER_RAM_BUFFER_SIZE = TreeMergeOutputFormat.class.getName() + ".indexWriter.buffer.size";
+
+
+  public static void setHdfsDirectoryBufferSize(Job job, int sizeBytes) {
+    job.getConfiguration().setInt(CONFIG_HDFS_DIRECTORY_BUFFER_SIZE, sizeBytes);
+  }
+
+
+  public static void setIndexWriterRamBufferSize(Job job, double sizeMB) {
+    job.getConfiguration().setDouble(CONFIG_INDEX_WRITER_RAM_BUFFER_SIZE, sizeMB);
+  }
+
+
   @Override
   public RecordWriter getRecordWriter(TaskAttemptContext context) throws IOException {
     Utils.getLogConfigFile(context.getConfiguration());
@@ -90,12 +115,15 @@ public class TreeMergeOutputFormat extends FileOutputFormat<Text, NullWritable> 
       LOG.debug("Task " + context.getTaskAttemptID() + " merging into dstDir: " + workDir + ", srcDirs: " + shards);
       writeShardNumberFile(context);      
       heartBeater.needHeartBeat();
+      final int hdfsDirectoryBufferSize = context.getConfiguration().getInt(CONFIG_HDFS_DIRECTORY_BUFFER_SIZE, HdfsDirectory.DEFAULT_BUFFER_SIZE);
       try {
-        Directory mergedIndex = new HdfsDirectory(workDir, context.getConfiguration());
+        Directory mergedIndex = new HdfsDirectory(workDir, HdfsLockFactory.INSTANCE, context.getConfiguration(), hdfsDirectoryBufferSize);
         
         // TODO: shouldn't we pull the Version from the solrconfig.xml?
         IndexWriterConfig writerConfig = new IndexWriterConfig(null)
-            .setOpenMode(OpenMode.CREATE).setUseCompoundFile(false)
+                .setOpenMode(OpenMode.CREATE)
+                .setUseCompoundFile(false)
+                .setRAMBufferSizeMB(context.getConfiguration().getDouble(CONFIG_INDEX_WRITER_RAM_BUFFER_SIZE, IndexWriterConfig.DEFAULT_RAM_BUFFER_SIZE_MB))
             //.setMergePolicy(mergePolicy) // TODO: grab tuned MergePolicy from solrconfig.xml?
             //.setMergeScheduler(...) // TODO: grab tuned MergeScheduler from solrconfig.xml?
             ;
@@ -103,7 +131,6 @@ public class TreeMergeOutputFormat extends FileOutputFormat<Text, NullWritable> 
         if (LOG.isDebugEnabled()) {
           writerConfig.setInfoStream(System.out);
         }
-//        writerConfig.setRAMBufferSizeMB(100); // improve performance
 //        writerConfig.setMaxThreadStates(1);
         
         // disable compound file to improve performance
@@ -125,7 +152,7 @@ public class TreeMergeOutputFormat extends FileOutputFormat<Text, NullWritable> 
         
         Directory[] indexes = new Directory[shards.size()];
         for (int i = 0; i < shards.size(); i++) {
-          indexes[i] = new HdfsDirectory(shards.get(i), context.getConfiguration());
+          indexes[i] = new HdfsDirectory(shards.get(i), HdfsLockFactory.INSTANCE, context.getConfiguration(), hdfsDirectoryBufferSize);
         }
 
         context.setStatus("Logically merging " + shards.size() + " shards into one shard");
