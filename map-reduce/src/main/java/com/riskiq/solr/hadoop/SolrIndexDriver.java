@@ -2,7 +2,6 @@ package com.riskiq.solr.hadoop;
 
 import com.riskiq.mapreduce.io.FilenameInputFormat;
 import org.apache.commons.cli.*;
-import org.apache.commons.io.FileUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.fs.Path;
@@ -16,7 +15,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
-import java.nio.file.Files;
 
 /**
  * MapReduce driver which will facilitates offline creation of Solr indexes.
@@ -79,17 +77,8 @@ public class SolrIndexDriver extends Configured implements Tool {
         }
 
         // copy Solr config files to a temporary directory
-        File tmpSolrHomeDir = Files.createTempDirectory("solr-home-").toFile();
-        File tmpCoreDir = new File(tmpSolrHomeDir, "core1");
-        Files.createDirectory(tmpCoreDir.toPath());
         File solrHomeDir = new File(new Path(commandLine.getOptionValue(solrHomeOption.getOpt())).toUri());
-        File solrConfDir = new File(solrHomeDir, "conf");
-        if (!solrConfDir.exists() || !solrConfDir.isDirectory()) {
-            throw new IllegalStateException("Solr conf directory " + solrConfDir.getAbsolutePath() + " not found.");
-        }
-        FileUtils.copyDirectory(solrHomeDir, tmpSolrHomeDir);
-        // copy config files to <solrHomeDir>/core1.  Those files will be used in the reduce phase.
-        FileUtils.copyDirectory(solrConfDir, tmpCoreDir);
+        File tmpSolrHomeDir = Utils.copySolrConfigToTempDir(solrHomeDir, "core1");
 
         SolrOutputFormat.setupSolrHomeCache(tmpSolrHomeDir, job);
 

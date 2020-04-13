@@ -7,6 +7,7 @@ import org.apache.lucene.search.SearcherFactory;
 import org.apache.lucene.search.SearcherManager;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.store.MMapDirectory;
+import org.apache.solr.util.FileUtils;
 import org.junit.Test;
 
 import java.io.File;
@@ -57,12 +58,20 @@ public class SolrMergeDriverTest extends IndexingTestCase {
             assertThat(partDir.isDirectory(), equalTo(true));
         }
 
+        File mergeConfigDir = temporaryFolder.newFolder("mergeConfig");
+        File confDir = Files.createDirectory(new File(mergeConfigDir, "conf").toPath()).toFile();
+        final String solrMergeConfigFile = "solrconfig_merge.xml";
+        File mergeConfigFile = new File(confDir, solrMergeConfigFile);
+        FileUtils.copyFile(new File(getClass().getResource(solrMergeConfigFile).toURI()), mergeConfigFile);
+
         // merge the index
         ToolRunner.run(getConf(), new SolrMergeDriver(), new String[]{
                 "-DmaxSegmentsOnTreeMerge=1",
                 "--shards", "1",
                 "--reducers", String.valueOf(numReducers),
                 "--input-dir", outputDir.getAbsolutePath(),
+                "--solr-home-dir", "file://" + mergeConfigDir.getAbsolutePath(),
+                "--solr-config-file-name", solrMergeConfigFile,
         });
 
         File mergeOut1Dir = new File(outputDir, "mtree-merge-input-iteration1");

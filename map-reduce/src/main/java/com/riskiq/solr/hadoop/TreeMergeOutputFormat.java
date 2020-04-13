@@ -17,6 +17,7 @@
 package com.riskiq.solr.hadoop;
 
 import com.google.common.base.Preconditions;
+import com.google.common.base.Strings;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;
@@ -28,21 +29,27 @@ import org.apache.lucene.index.*;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.misc.IndexMergeTool;
 import org.apache.lucene.store.Directory;
+import org.apache.solr.core.PluginInfo;
+import org.apache.solr.core.SolrConfig;
+import org.apache.solr.core.SolrResourceLoader;
+import org.apache.solr.index.MergePolicyFactory;
+import org.apache.solr.index.MergePolicyFactoryArgs;
+import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.store.hdfs.HdfsDirectory;
 import org.apache.solr.store.hdfs.HdfsLockFactory;
 import org.apache.solr.update.SolrIndexWriter;
 import org.apache.solr.util.RTimer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.xml.sax.SAXException;
 
-import java.io.IOException;
-import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.io.Writer;
+import javax.xml.parsers.ParserConfigurationException;
+import java.io.*;
 import java.lang.invoke.MethodHandles;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * See {@link IndexMergeTool}.
@@ -61,6 +68,9 @@ public class TreeMergeOutputFormat extends FileOutputFormat<Text, NullWritable> 
    */
   public static final String CONFIG_INDEX_WRITER_RAM_BUFFER_SIZE = TreeMergeOutputFormat.class.getName() + ".indexWriter.buffer.size";
 
+  public static final String CONFIG_SOLR_CONFIG_FILE_NAME = TreeMergeOutputFormat.class.getName() + ".solrConfig.fileName";
+  public static final String DEFAULT_SOLR_CONFIG_FILE_NAME = "solrconfig.xml";
+
 
   public static void setHdfsDirectoryBufferSize(Job job, int sizeBytes) {
     job.getConfiguration().setInt(CONFIG_HDFS_DIRECTORY_BUFFER_SIZE, sizeBytes);
@@ -69,6 +79,11 @@ public class TreeMergeOutputFormat extends FileOutputFormat<Text, NullWritable> 
 
   public static void setIndexWriterRamBufferSize(Job job, double sizeMB) {
     job.getConfiguration().setDouble(CONFIG_INDEX_WRITER_RAM_BUFFER_SIZE, sizeMB);
+  }
+
+
+  public static void setSolrConfigFileName(Job job, String path) {
+    job.getConfiguration().set(CONFIG_SOLR_CONFIG_FILE_NAME, path);
   }
 
 
@@ -118,7 +133,20 @@ public class TreeMergeOutputFormat extends FileOutputFormat<Text, NullWritable> 
       final int hdfsDirectoryBufferSize = context.getConfiguration().getInt(CONFIG_HDFS_DIRECTORY_BUFFER_SIZE, HdfsDirectory.DEFAULT_BUFFER_SIZE);
       try {
         Directory mergedIndex = new HdfsDirectory(workDir, HdfsLockFactory.INSTANCE, context.getConfiguration(), hdfsDirectoryBufferSize);
-        
+
+        Optional<MergePolicy> mergePolicyOptional = Optional.empty();
+        String solrConfigFileName = context.getConfiguration().get(CONFIG_SOLR_CONFIG_FILE_NAME);
+        if (!Strings.isNullOrEmpty(solrConfigFileName)) {
+          // attempt to load a merge policy from the xml solr config
+          Path solrHomeDir = SolrRecordWriter.findSolrConfig(context);
+          log.info("Using Solr home directory {}", solrHomeDir);
+          try {
+            mergePolicyOptional = buildMergePolicy(new File(solrHomeDir.toUri()).toPath(), solrConfigFileName);
+          } catch (SAXException | ParserConfigurationException e) {
+            throw new IOException("Unable to parse Solr configuration from " + solrHomeDir, e);
+          }
+        }
+
         // TODO: shouldn't we pull the Version from the solrconfig.xml?
         IndexWriterConfig writerConfig = new IndexWriterConfig(null)
                 .setOpenMode(OpenMode.CREATE)
@@ -127,7 +155,8 @@ public class TreeMergeOutputFormat extends FileOutputFormat<Text, NullWritable> 
             //.setMergePolicy(mergePolicy) // TODO: grab tuned MergePolicy from solrconfig.xml?
             //.setMergeScheduler(...) // TODO: grab tuned MergeScheduler from solrconfig.xml?
             ;
-          
+        mergePolicyOptional.ifPresent(writerConfig::setMergePolicy);
+
         if (LOG.isDebugEnabled()) {
           writerConfig.setInfoStream(System.out);
         }
@@ -198,6 +227,32 @@ public class TreeMergeOutputFormat extends FileOutputFormat<Text, NullWritable> 
         heartBeater.close();
       }
     }
+
+
+    /**
+     * Attempts to read the Solr configuration file with the given name in the given path and construct a {@link MergePolicy}
+     * using the values found therein.
+     * @param solrHomePath a path containing a Solr config xml file
+     * @param configName name of the Solr config xml file, including the ".xml" suffix
+     * @return an {@link Optional} containing a MergePolicy if we were able to successfully construct a policy using the
+     * loaded config file; an empty Optional if we were unable to do so
+     * @throws IOException
+     * @throws SAXException
+     * @throws ParserConfigurationException
+     */
+    private Optional<MergePolicy> buildMergePolicy(java.nio.file.Path solrHomePath, String configName) throws IOException, SAXException, ParserConfigurationException {
+      SolrConfig solrConfig = new SolrConfig(solrHomePath, "conf/" + configName, null,true);
+      PluginInfo mergePolicyFactoryInfo = solrConfig.indexConfig.mergePolicyFactoryInfo;
+      if (mergePolicyFactoryInfo == null) {
+        return Optional.empty();
+      } else {
+        String className = mergePolicyFactoryInfo.className;
+        MergePolicyFactoryArgs args = new MergePolicyFactoryArgs(mergePolicyFactoryInfo.initArgs);
+        MergePolicyFactory mergePolicyFactory = solrConfig.getResourceLoader().newInstance(className, MergePolicyFactory.class, new String[0], new Class[]{SolrResourceLoader.class, MergePolicyFactoryArgs.class, IndexSchema.class}, new Object[]{solrConfig.getResourceLoader(), args, null});
+        return Optional.of(mergePolicyFactory.getMergePolicy());
+      }
+    }
+
 
     /*
      * For background see MapReduceIndexerTool.renameTreeMergeShardDirs()
