@@ -3,6 +3,10 @@
 
   <indexConfig>
     <lockType>${solr.lock.type:hdfs}</lockType>
+    <mergePolicyFactory class="org.apache.solr.index.TieredMergePolicyFactory">
+      <int name="maxMergeAtOnce">10000</int>
+      <int name="segmentsPerTier">100</int>
+    </mergePolicyFactory>
   </indexConfig>
 
   <autoCommit>
@@ -12,6 +16,7 @@
   </autoCommit>
 
   <schemaFactory class="ClassicIndexSchemaFactory"/>
+
 
   <directoryFactory name="DirectoryFactory" class="com.riskiq.solr.hadoop.LocalHdfsDirectoryFactory">
     <str name="solr.hdfs.home">${solr.home.directory:file:///tmp/}</str>

@@ -18,13 +18,13 @@ Maven:
 <dependency>
     <groupId>com.riskiq</groupId>
     <artifactId>solr-map-reduce</artifactId>
-    <version>8.4.1.0</version>
+    <version>8.4.1.2</version>
 </dependency>
 ```
 
 Gradle:
 ```groovy
-compile group: 'com.riskiq', name: 'solr-map-reduce', version: '8.4.1.0'
+compile group: 'com.riskiq', name: 'solr-map-reduce', version: '8.4.1.2'
 ```
 
 Example lifted from [the original readme](https://github.com/apache/lucene-solr/tree/releases/lucene-solr/6.5.1/solr/contrib/map-reduce):

@@ -4,10 +4,12 @@ import com.google.common.base.Preconditions;
 import com.google.common.io.ByteStreams;
 import com.google.common.math.IntMath;
 import org.apache.commons.cli.*;
-import org.apache.commons.cli.Options;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
-import org.apache.hadoop.fs.*;
+import org.apache.hadoop.fs.FSDataOutputStream;
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
@@ -66,6 +68,12 @@ public class SolrMergeDriver extends Configured implements Tool {
         Option fanoutOption = new Option("f", "fanout", true, "Fanout");
         options.addOption(fanoutOption);
 
+        Option solrHomeOption = new Option("shd", "solr-home-dir", true, "Absolute path containing Solr conf/ dir. Optional. If present, merge configs will be loaded from solr configs in this directory.");
+        options.addOption(solrHomeOption);
+
+        Option solrConfigFileNameOption = new Option("sfn", "solr-config-file-name", true, "Solr config xml file name within configured solr-home-dir. Defaults to solrconfig.xml.");
+        options.addOption(solrConfigFileNameOption);
+
         CommandLineParser parser = new GnuParser();
         CommandLine commandLine = parser.parse(options, args);
 
@@ -90,6 +98,15 @@ public class SolrMergeDriver extends Configured implements Tool {
         Path outputPath = new Path(commandLine.getOptionValue(inputOption.getOpt()));  // final index output path
         Path mergeOutputPath = new Path(input, "mtree-merge-output");
 
+        String solrConfigFileName = TreeMergeOutputFormat.DEFAULT_SOLR_CONFIG_FILE_NAME;
+        File tmpSolrHomeDir = null;
+        if (commandLine.hasOption(solrHomeOption.getOpt())) {
+            if (commandLine.hasOption(solrConfigFileNameOption.getOpt())) {
+                solrConfigFileName = commandLine.getOptionValue(solrConfigFileNameOption.getOpt());
+            }
+            File solrHomeDir = new File(new Path(commandLine.getOptionValue(solrHomeOption.getOpt())).toUri());
+            tmpSolrHomeDir = Utils.copySolrConfigToTempDir(solrHomeDir, "core1");
+        }
 
         int mtreeMergeIteration = 1;
         Job job = null;
@@ -97,6 +114,11 @@ public class SolrMergeDriver extends Configured implements Tool {
             job = Job.getInstance(getConf());
             job.setJobName("Solr offline index merger: " + input);
             job.setJarByClass(getClass());
+
+            if (tmpSolrHomeDir != null) {
+                SolrOutputFormat.setupSolrHomeCache(tmpSolrHomeDir, job);
+                TreeMergeOutputFormat.setSolrConfigFileName(job, solrConfigFileName);
+            }
 
             job.setMapperClass(TreeMergeMapper.class);
             job.setOutputFormatClass(TreeMergeOutputFormat.class);
