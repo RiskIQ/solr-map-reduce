@@ -141,22 +141,26 @@ public class SolrMergeDriver extends Configured implements Tool {
             FileOutputFormat.setOutputPath(job, mergeOutputPath);
             log.info("MTree merge iteration {}/{}: Merging {} shards into {} shards using fanout {}", mtreeMergeIteration, 1, reducers, (reducers / fanout), fanout);
             if (!job.waitForCompletion(true)) {
+                Utils.cleanUpSolrHomeCache(job);
                 return -1;  // merge job failed
             }
 
             // merge job succeeded. Delete reducer output directory.
             if (!reducersPath.getFileSystem(getConf()).delete(reducersPath, true)) {
                 log.error("Unable to delete " + reducersPath);
+                Utils.cleanUpSolrHomeCache(job);
                 return -1;
             }
             // rename merge output to reducer output path in preparation for next merge iteration.
             if (!rename(mergeOutputPath, reducersPath, mergeOutputPath.getFileSystem(getConf()))) {
                 log.error("Unable to rename " + mergeOutputPath + " to " + reducersPath);
+                Utils.cleanUpSolrHomeCache(job);
                 return -1;
             }
 
             reducers = reducers / fanout;
             mtreeMergeIteration++;
+            Utils.cleanUpSolrHomeCache(job);
         }
 
         if (!renameTreeMergeShardDirs(reducersPath, job, reducersPath.getFileSystem(job.getConfiguration()))) {

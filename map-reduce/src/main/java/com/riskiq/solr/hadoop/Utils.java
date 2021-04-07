@@ -17,10 +17,15 @@
 package com.riskiq.solr.hadoop;
 
 import com.google.common.annotations.Beta;
+import com.google.common.base.Strings;
 import org.apache.commons.io.FileUtils;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.mapreduce.JobContext;
 import org.apache.log4j.PropertyConfigurator;
 import org.apache.solr.common.util.SuppressForbidden;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
@@ -29,6 +34,7 @@ import java.nio.file.Files;
 
 @Beta
 public final class Utils {
+  private static final Logger log = LoggerFactory.getLogger(Utils.class);
   
   private static final String LOG_CONFIG_FILE = "hadoop.log4j.configuration";
   
@@ -78,5 +84,25 @@ public final class Utils {
     // copy config files to <solrHomeDir>/<coreName>.  Those files will be used in the reduce phase.
     FileUtils.copyDirectory(solrConfDir, tmpCoreDir);
     return tmpSolrHomeDir;
+  }
+
+
+  /**
+   * Deletes the Solr home zip file which is created for use in distributed cache.
+   * @param job the job that used the zip file
+   */
+  public static void cleanUpSolrHomeCache(JobContext job) {
+    String pathString = job.getConfiguration().get(SolrOutputFormat.SETUP_OK);
+    if (Strings.isNullOrEmpty(pathString)) {
+      // nothing to clean up
+      return;
+    }
+    Path zipPath = new Path(pathString);
+    try {
+      zipPath.getFileSystem(job.getConfiguration())
+              .delete(zipPath, false);
+    } catch (IOException e) {
+      log.error("Unable to delete Solr home zip file at " + pathString, e);
+    }
   }
 }

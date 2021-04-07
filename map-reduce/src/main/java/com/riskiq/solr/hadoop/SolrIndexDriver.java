@@ -111,6 +111,10 @@ public class SolrIndexDriver extends Configured implements Tool {
 
         log.info("Starting MR job with input {} and output {}", input, outputReduceDir);
 
-        return job.waitForCompletion(true) ? 0 : 1;
+        final boolean success = job.waitForCompletion(true);
+
+        Utils.cleanUpSolrHomeCache(job);
+
+        return success ? 0 : 1;
     }
 }
