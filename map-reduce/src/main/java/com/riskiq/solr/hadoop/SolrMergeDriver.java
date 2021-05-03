@@ -221,13 +221,11 @@ public class SolrMergeDriver extends Configured implements Tool {
         FileSystem fileSystem = iterationFile.getFileSystem(getConf());
         if (fileSystem.exists(iterationFile)) {
             try (FSDataInputStream is = fileSystem.open(iterationFile); BufferedReader br = new BufferedReader(new InputStreamReader(is))) {
-                try {
-                    int iteration = Integer.parseInt(br.readLine());
-                    int inputs = Integer.parseInt(br.readLine());
-                    return Optional.of(Pair.of(iteration, inputs));
-                } catch (NumberFormatException e) {
-                    throw new IllegalStateException("Error parsing iteration number from file " + iterationFile, e);
-                }
+                int iteration = Integer.parseInt(br.readLine());
+                int inputs = Integer.parseInt(br.readLine());
+                return Optional.of(Pair.of(iteration, inputs));
+            } catch (NumberFormatException e) {
+                throw new IllegalStateException("Error parsing iteration number from file " + iterationFile, e);
             }
         }
         return Optional.empty();
