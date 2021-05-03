@@ -4,12 +4,11 @@ import com.google.common.base.Preconditions;
 import com.google.common.io.ByteStreams;
 import com.google.common.math.IntMath;
 import org.apache.commons.cli.*;
+import org.apache.commons.cli.Options;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
-import org.apache.hadoop.fs.FSDataOutputStream;
-import org.apache.hadoop.fs.FileStatus;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.*;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
@@ -26,6 +25,7 @@ import java.nio.charset.StandardCharsets;
 import java.text.NumberFormat;
 import java.util.Arrays;
 import java.util.Locale;
+import java.util.Optional;
 
 /**
  * MapReduce driver which merges multiple Solr indices into a single index.  This should be run on the output of
@@ -74,6 +74,9 @@ public class SolrMergeDriver extends Configured implements Tool {
         Option solrConfigFileNameOption = new Option("sfn", "solr-config-file-name", true, "Solr config xml file name within configured solr-home-dir. Defaults to solrconfig.xml.");
         options.addOption(solrConfigFileNameOption);
 
+        Option stopAfterIterationsOption = new Option("st", "stop-after-iterations", true, "Number of merge iterations after which the job will intentionally halt.  Used for testing.");
+        options.addOption(stopAfterIterationsOption);
+
         CommandLineParser parser = new GnuParser();
         CommandLine commandLine = parser.parse(options, args);
 
@@ -85,6 +88,8 @@ public class SolrMergeDriver extends Configured implements Tool {
         if (fanout < 2 || reducers % fanout != 0) {
             throw new IllegalArgumentException("Fanout must be >= 2 and reducers % fanout must == 0");
         }
+
+        Integer stopAfterIterations = commandLine.hasOption(stopAfterIterationsOption.getOpt()) ? Integer.parseInt(commandLine.getOptionValue(stopAfterIterationsOption.getOpt())) : null;
 
         if (commandLine.hasOption(log4jOption.getOpt())) {
             Utils.configureLog4jProperties(commandLine.getOptionValue(log4jOption.getOpt()));
@@ -108,7 +113,16 @@ public class SolrMergeDriver extends Configured implements Tool {
             tmpSolrHomeDir = Utils.copySolrConfigToTempDir(solrHomeDir, "core1");
         }
 
+        Path iterationFile = new Path(outputPath, "_ITERATION");
+
         int mtreeMergeIteration = 1;
+        Optional<Pair<Integer, Integer>> iterationOptional = readIteration(iterationFile);
+        if (iterationOptional.isPresent()) {
+            // we are retrying this job after a previous instance successfully performed at least one iteration. Pick up where we left off.
+            mtreeMergeIteration = iterationOptional.get().getKey();
+            reducers = iterationOptional.get().getValue();
+        }
+
         Job job = null;
         while (reducers > shards) {
             job = Job.getInstance(getConf());
@@ -161,6 +175,12 @@ public class SolrMergeDriver extends Configured implements Tool {
             reducers = reducers / fanout;
             mtreeMergeIteration++;
             Utils.cleanUpSolrHomeCache(job);
+            writeIterationFile(iterationFile, mtreeMergeIteration, reducers);
+
+            if (stopAfterIterations != null && mtreeMergeIteration - 1 >= stopAfterIterations) {
+                // should only be used for testing
+                throw new InterruptedException("Stopping after " + stopAfterIterations + " merge iterations.");
+            }
         }
 
         if (!renameTreeMergeShardDirs(reducersPath, job, reducersPath.getFileSystem(job.getConfiguration()))) {
@@ -187,6 +207,47 @@ public class SolrMergeDriver extends Configured implements Tool {
         }
 
         return 0;
+    }
+
+
+    /**
+     * Reads merge iteration information from a file at the given path.  If it exists, the file is expected to contain
+     * two lines with an integer on each line, as written by {@link #writeIterationFile(Path, int, int)}.
+     * @param iterationFile path to the iteration metadata file
+     * @return an Optional containing a Pair of the iteration number and number of inputs if the given file exists; an empty optional if the file does not exist
+     * @throws IOException
+     */
+    private Optional<Pair<Integer, Integer>> readIteration(Path iterationFile) throws IOException {
+        FileSystem fileSystem = iterationFile.getFileSystem(getConf());
+        if (fileSystem.exists(iterationFile)) {
+            try (FSDataInputStream is = fileSystem.open(iterationFile); BufferedReader br = new BufferedReader(new InputStreamReader(is))) {
+                try {
+                    int iteration = Integer.parseInt(br.readLine());
+                    int inputs = Integer.parseInt(br.readLine());
+                    return Optional.of(Pair.of(iteration, inputs));
+                } catch (NumberFormatException e) {
+                    throw new IllegalStateException("Error parsing iteration number from file " + iterationFile, e);
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
+
+    /**
+     * Writes a text file containing merge iteration metadata to the given path.
+     * @param iterationFile path at which the file will be written.  If a file exists at this path, it will be overwritten.
+     * @param iteration merge iteration number
+     * @param inputs number of inputs expected for the given iteration number
+     * @throws IOException
+     */
+    private void writeIterationFile(Path iterationFile, int iteration, int inputs) throws IOException {
+        FileSystem fileSystem = iterationFile.getFileSystem(getConf());
+        try (FSDataOutputStream os = fileSystem.create(iterationFile, true); BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(os))) {
+            writer.write(Integer.toString(iteration));
+            writer.write("\n");
+            writer.write(Integer.toString(inputs));
+        }
     }
 
 
