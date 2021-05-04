@@ -15,8 +15,7 @@ import java.nio.file.Files;
 import java.util.List;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.*;
 
 /**
  * @author Joe Linn
@@ -37,7 +36,7 @@ public class SolrMergeDriverTest extends IndexingTestCase {
         // create an index
         File outputDir = new File(temporaryFolder.getRoot(), "output");
 
-        final int numReducers = 3;
+        final int numReducers = 10;
         ToolRunner.run(getConf(), new SolrIndexDriver(), new String[]{
                 "-Dmapreduce.job.map.class=com.riskiq.solr.hadoop.IndexingTestCase$TestSolrMapper",
                 "-Dmapreduce.job.partitioner.class=com.riskiq.solr.hadoop.SolrCloudCompositeIdRoutingPartitioner",
@@ -72,7 +71,98 @@ public class SolrMergeDriverTest extends IndexingTestCase {
                 "--input-dir", outputDir.getAbsolutePath(),
                 "--solr-home-dir", "file://" + mergeConfigDir.getAbsolutePath(),
                 "--solr-config-file-name", solrMergeConfigFile,
+                "--fanout", Integer.toString(numReducers / 2)
         });
+
+        File mergeOut1Dir = new File(outputDir, "mtree-merge-input-iteration1");
+        assertThat(mergeOut1Dir.exists(), equalTo(true));
+        File merge1InputList = new File(mergeOut1Dir, "input-list.txt");
+        assertThat(merge1InputList.exists(), equalTo(true));
+        List<String> merge1InputLines = Files.readAllLines(merge1InputList.toPath());
+        assertThat(merge1InputLines, hasSize(numReducers));
+
+        File iterationFile = new File(outputDir, "_ITERATION");
+        assertThat(iterationFile.exists(), equalTo(true));
+
+        List<String> iterationLines = Files.readAllLines(iterationFile.toPath());
+        assertThat(iterationLines.get(0), equalTo("3"));
+        assertThat(iterationLines.get(1), equalTo("0"));
+
+        File resultsDir = new File(outputDir, "results");
+        assertThat("results directory should exist", resultsDir.exists(), equalTo(true));
+        File mergedIndexDir = new File(resultsDir, "part-00000/data/index");
+        try (MMapDirectory mmap = new MMapDirectory(mergedIndexDir.toPath());) {
+            SearcherFactory searcherFactory = new SearcherFactory();
+            SearcherManager searcherManager = new SearcherManager(mmap, searcherFactory);
+            TopDocs topDocs = searcherManager.acquire().search(new MatchAllDocsQuery(), 100);
+            assertThat(topDocs.totalHits.value, equalTo((long) 100));
+            SegmentInfos segmentInfos = SegmentInfos.readLatestCommit(mmap);
+            assertThat(segmentInfos.size(), equalTo(1));
+        }
+    }
+
+
+    @Test
+    public void testRetryMerge() throws Exception {
+        // write data
+        File inputDir = temporaryFolder.newFolder("input");
+        writeInputFile(new File(inputDir, "part-r-00000.txt"), 0, 50);
+        writeInputFile(new File(inputDir, "part-r-00001.txt"), 50, 50);
+
+        // set up Solr configs
+        File solrHomeDir = temporaryFolder.newFolder("solrHome");
+        copySolrConfigs(solrHomeDir);
+
+        // create an index
+        File outputDir = new File(temporaryFolder.getRoot(), "output");
+
+        final int numReducers = 10;
+        ToolRunner.run(getConf(), new SolrIndexDriver(), new String[]{
+                "-Dmapreduce.job.map.class=com.riskiq.solr.hadoop.IndexingTestCase$TestSolrMapper",
+                "-Dmapreduce.job.partitioner.class=com.riskiq.solr.hadoop.SolrCloudCompositeIdRoutingPartitioner",
+                "-Dsolr.record.writer.batch.size=20",
+                "--solr-home-dir", "file://" + solrHomeDir.getAbsolutePath(),
+                "--shards", "1",
+                "--reducers", String.valueOf(numReducers),
+                "--output-dir", outputDir.getAbsolutePath(),
+                "-i", inputDir.getAbsolutePath()
+        });
+
+        File mergeConfigDir = temporaryFolder.newFolder("mergeConfig");
+        File confDir = Files.createDirectory(new File(mergeConfigDir, "conf").toPath()).toFile();
+        final String solrMergeConfigFile = "solrconfig_merge.xml";
+        File mergeConfigFile = new File(confDir, solrMergeConfigFile);
+        FileUtils.copyFile(new File(getClass().getResource(solrMergeConfigFile).toURI()), mergeConfigFile);
+
+        // merge the index, but "fail" after the first iteration
+        boolean interrupted = false;
+        try {
+            ToolRunner.run(getConf(), new SolrMergeDriver(), new String[]{
+                    "-DmaxSegmentsOnTreeMerge=1",
+                    "--shards", "1",
+                    "--reducers", String.valueOf(numReducers),
+                    "--input-dir", outputDir.getAbsolutePath(),
+                    "--solr-home-dir", "file://" + mergeConfigDir.getAbsolutePath(),
+                    "--solr-config-file-name", solrMergeConfigFile,
+                    "--fanout", Integer.toString(numReducers / 2),
+                    "--stop-after-iterations", "1"
+            });
+        } catch (InterruptedException e) {
+            interrupted = true;
+        }
+        assertThat(interrupted, equalTo(true));
+
+        // retry the merge
+        int result = ToolRunner.run(getConf(), new SolrMergeDriver(), new String[]{
+                "-DmaxSegmentsOnTreeMerge=1",
+                "--shards", "1",
+                "--reducers", String.valueOf(numReducers),
+                "--input-dir", outputDir.getAbsolutePath(),
+                "--solr-home-dir", "file://" + mergeConfigDir.getAbsolutePath(),
+                "--solr-config-file-name", solrMergeConfigFile,
+                "--fanout", Integer.toString(numReducers / 2)
+        });
+        assertThat(result, equalTo(0));
 
         File mergeOut1Dir = new File(outputDir, "mtree-merge-input-iteration1");
         assertThat(mergeOut1Dir.exists(), equalTo(true));
