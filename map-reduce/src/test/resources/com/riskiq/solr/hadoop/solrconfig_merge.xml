@@ -3,9 +3,12 @@
 
   <indexConfig>
     <lockType>${solr.lock.type:hdfs}</lockType>
-    <mergePolicyFactory class="org.apache.solr.index.TieredMergePolicyFactory">
-      <int name="maxMergeAtOnce">10000</int>
-      <int name="segmentsPerTier">100</int>
+    <mergePolicyFactory class="org.apache.solr.index.SortingMergePolicyFactory">
+      <str name="sort">id desc</str>
+      <str name="wrapped.prefix">inner</str>
+      <str name="inner.class">org.apache.solr.index.TieredMergePolicyFactory</str>
+      <int name="inner.maxMergeAtOnce">10000</int>
+      <int name="inner.segmentsPerTier">100</int>
     </mergePolicyFactory>
   </indexConfig>
 

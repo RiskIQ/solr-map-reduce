@@ -62,6 +62,7 @@ public class SolrMergeDriverTest extends IndexingTestCase {
         final String solrMergeConfigFile = "solrconfig_merge.xml";
         File mergeConfigFile = new File(confDir, solrMergeConfigFile);
         FileUtils.copyFile(new File(getClass().getResource(solrMergeConfigFile).toURI()), mergeConfigFile);
+        FileUtils.copyFile(new File(getClass().getResource("schema.xml").toURI()), new File(confDir, "schema.xml"));
 
         // merge the index
         ToolRunner.run(getConf(), new SolrMergeDriver(), new String[]{
@@ -133,6 +134,7 @@ public class SolrMergeDriverTest extends IndexingTestCase {
         final String solrMergeConfigFile = "solrconfig_merge.xml";
         File mergeConfigFile = new File(confDir, solrMergeConfigFile);
         FileUtils.copyFile(new File(getClass().getResource(solrMergeConfigFile).toURI()), mergeConfigFile);
+        FileUtils.copyFile(new File(getClass().getResource("schema.xml").toURI()), new File(confDir, "schema.xml"));
 
         // merge the index, but "fail" after the first iteration
         boolean interrupted = false;

@@ -29,6 +29,7 @@ import org.apache.lucene.index.*;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.misc.IndexMergeTool;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.util.Version;
 import org.apache.solr.core.PluginInfo;
 import org.apache.solr.core.SolrConfig;
 import org.apache.solr.core.SolrResourceLoader;
@@ -41,6 +42,7 @@ import org.apache.solr.update.SolrIndexWriter;
 import org.apache.solr.util.RTimer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 
 import javax.xml.parsers.ParserConfigurationException;
@@ -139,6 +141,9 @@ public class TreeMergeOutputFormat extends FileOutputFormat<Text, NullWritable> 
         if (!Strings.isNullOrEmpty(solrConfigFileName)) {
           // attempt to load a merge policy from the xml solr config
           Path solrHomeDir = SolrRecordWriter.findSolrConfig(context);
+          if (!solrHomeDir.toString().contains(":/")) {
+            solrHomeDir = new Path("file://" + solrHomeDir.toString());
+          }
           log.info("Using Solr home directory {}", solrHomeDir);
           try {
             mergePolicyOptional = buildMergePolicy(new File(solrHomeDir.toUri()).toPath(), solrConfigFileName);
@@ -246,9 +251,10 @@ public class TreeMergeOutputFormat extends FileOutputFormat<Text, NullWritable> 
       if (mergePolicyFactoryInfo == null) {
         return Optional.empty();
       } else {
+        IndexSchema schema = new IndexSchema("schema", new InputSource(new BufferedReader(new FileReader(new File(solrHomePath.toFile(), "conf/schema.xml")))), Version.LATEST, new SolrResourceLoader());
         String className = mergePolicyFactoryInfo.className;
         MergePolicyFactoryArgs args = new MergePolicyFactoryArgs(mergePolicyFactoryInfo.initArgs);
-        MergePolicyFactory mergePolicyFactory = solrConfig.getResourceLoader().newInstance(className, MergePolicyFactory.class, new String[0], new Class[]{SolrResourceLoader.class, MergePolicyFactoryArgs.class, IndexSchema.class}, new Object[]{solrConfig.getResourceLoader(), args, null});
+        MergePolicyFactory mergePolicyFactory = solrConfig.getResourceLoader().newInstance(className, MergePolicyFactory.class, new String[0], new Class[]{SolrResourceLoader.class, MergePolicyFactoryArgs.class, IndexSchema.class}, new Object[]{solrConfig.getResourceLoader(), args, schema});
         return Optional.of(mergePolicyFactory.getMergePolicy());
       }
     }
