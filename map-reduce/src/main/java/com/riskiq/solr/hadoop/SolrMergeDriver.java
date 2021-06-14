@@ -77,6 +77,9 @@ public class SolrMergeDriver extends Configured implements Tool {
         Option stopAfterIterationsOption = new Option("st", "stop-after-iterations", true, "Number of merge iterations after which the job will intentionally halt.  Used for testing.");
         options.addOption(stopAfterIterationsOption);
 
+        Option deferDeletionOption = new Option("dd", "defer-deletion", false, "Inclusion of this flag will prevent deletion of intermediate merge output. Useful in circumstances where deletion of numerous files is slow and would delay index merging.");
+        options.addOption(deferDeletionOption);
+
         CommandLineParser parser = new GnuParser();
         CommandLine commandLine = parser.parse(options, args);
 
@@ -99,6 +102,8 @@ public class SolrMergeDriver extends Configured implements Tool {
         if (!reducersPath.getFileSystem(getConf()).exists(reducersPath)) {
             throw new IllegalStateException("Directory " + reducersPath + " does not exist.");
         }
+
+        final boolean deferDeletion = commandLine.hasOption(deferDeletionOption.getOpt());
 
         Path outputPath = new Path(commandLine.getOptionValue(inputOption.getOpt()));  // final index output path
         Path mergeOutputPath = new Path(input, "mtree-merge-output");
@@ -159,11 +164,21 @@ public class SolrMergeDriver extends Configured implements Tool {
                 return -1;  // merge job failed
             }
 
-            // merge job succeeded. Delete reducer output directory.
-            if (!reducersPath.getFileSystem(getConf()).delete(reducersPath, true)) {
-                log.error("Unable to delete " + reducersPath);
-                Utils.cleanUpSolrHomeCache(job);
-                return -1;
+            if (deferDeletion) {
+                // move previous index output rather than deleting it
+                Path oldMergePath = new Path(reducersPath.toUri() + "-merged-" + mtreeMergeIteration);
+                if (!rename(reducersPath, oldMergePath, reducersPath.getFileSystem(getConf()))) {
+                    log.error("Unable to rename " + reducersPath + " to " + oldMergePath);
+                    Utils.cleanUpSolrHomeCache(job);
+                    return -1;
+                }
+            } else {
+                // merge job succeeded. Delete reducer output directory.
+                if (!reducersPath.getFileSystem(getConf()).delete(reducersPath, true)) {
+                    log.error("Unable to delete " + reducersPath);
+                    Utils.cleanUpSolrHomeCache(job);
+                    return -1;
+                }
             }
             // rename merge output to reducer output path in preparation for next merge iteration.
             if (!rename(mergeOutputPath, reducersPath, mergeOutputPath.getFileSystem(getConf()))) {

@@ -185,4 +185,76 @@ public class SolrMergeDriverTest extends IndexingTestCase {
             assertThat(segmentInfos.size(), equalTo(1));
         }
     }
+
+
+    @Test
+    public void testDeferDeletion() throws Exception {
+        // write data
+        File inputDir = temporaryFolder.newFolder("input");
+        writeInputFile(new File(inputDir, "part-r-00000.txt"), 0, 50);
+        writeInputFile(new File(inputDir, "part-r-00001.txt"), 50, 50);
+
+        // set up Solr configs
+        File solrHomeDir = temporaryFolder.newFolder("solrHome");
+        copySolrConfigs(solrHomeDir);
+
+        // create an index
+        File outputDir = new File(temporaryFolder.getRoot(), "output");
+
+        final int numReducers = 10;
+        ToolRunner.run(getConf(), new SolrIndexDriver(), new String[]{
+                "-Dmapreduce.job.map.class=com.riskiq.solr.hadoop.IndexingTestCase$TestSolrMapper",
+                "-Dmapreduce.job.partitioner.class=com.riskiq.solr.hadoop.SolrCloudCompositeIdRoutingPartitioner",
+                "-Dsolr.record.writer.batch.size=20",
+                "--solr-home-dir", "file://" + solrHomeDir.getAbsolutePath(),
+                "--shards", "1",
+                "--reducers", String.valueOf(numReducers),
+                "--output-dir", outputDir.getAbsolutePath(),
+                "-i", inputDir.getAbsolutePath()
+        });
+
+        assertThat(outputDir.exists(), equalTo(true));
+        File reducersDir = new File(outputDir, "reducers");
+        assertThat(reducersDir.exists(), equalTo(true));
+        for (int i = 0; i < numReducers; i++) {
+            File partDir = new File(reducersDir, "part-r-0000" + i);
+            assertThat(partDir.exists(), equalTo(true));
+            assertThat(partDir.isDirectory(), equalTo(true));
+        }
+
+        File mergeConfigDir = temporaryFolder.newFolder("mergeConfig");
+        File confDir = Files.createDirectory(new File(mergeConfigDir, "conf").toPath()).toFile();
+        final String solrMergeConfigFile = "solrconfig_merge.xml";
+        File mergeConfigFile = new File(confDir, solrMergeConfigFile);
+        FileUtils.copyFile(new File(getClass().getResource(solrMergeConfigFile).toURI()), mergeConfigFile);
+        FileUtils.copyFile(new File(getClass().getResource("schema.xml").toURI()), new File(confDir, "schema.xml"));
+
+        // merge the index
+        ToolRunner.run(getConf(), new SolrMergeDriver(), new String[]{
+                "-DmaxSegmentsOnTreeMerge=1",
+                "--shards", "1",
+                "--reducers", String.valueOf(numReducers),
+                "--input-dir", outputDir.getAbsolutePath(),
+                "--solr-home-dir", "file://" + mergeConfigDir.getAbsolutePath(),
+                "--solr-config-file-name", solrMergeConfigFile,
+                "--fanout", Integer.toString(numReducers / 2),
+                "-dd"
+        });
+
+        assertThat(outputDir.exists(), equalTo(true));
+        assertThat(new File(outputDir, "reducers-merged-1").exists(), equalTo(true));
+        assertThat(new File(outputDir, "reducers-merged-2").exists(), equalTo(true));
+
+        File resultsDir = new File(outputDir, "results");
+        assertThat("results directory should exist", resultsDir.exists(), equalTo(true));
+        File mergedIndexDir = new File(resultsDir, "part-00000/data/index");
+        try (MMapDirectory mmap = new MMapDirectory(mergedIndexDir.toPath());) {
+            SearcherFactory searcherFactory = new SearcherFactory();
+            SearcherManager searcherManager = new SearcherManager(mmap, searcherFactory);
+            TopDocs topDocs = searcherManager.acquire().search(new MatchAllDocsQuery(), 100);
+            assertThat(topDocs.totalHits.value, equalTo((long) 100));
+            SegmentInfos segmentInfos = SegmentInfos.readLatestCommit(mmap);
+            assertThat(segmentInfos.size(), equalTo(1));
+        }
+    }
 }
